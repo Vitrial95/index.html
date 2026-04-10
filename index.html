@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>Agro-Tech Global Monitor</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000a05; font-family: 'Orbitron', sans-serif; color: #e0f2f1; }
+        #globeViz { width: 100vw; height: 100vh; }
+        @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;500&display=swap");
+
+        /* Panel Lateral */
+        #side-panel {
+            position: absolute;
+            top: 20px;
+            right: -350px;
+            width: 300px;
+            height: calc(100vh - 40px);
+            background: rgba(0, 20, 15, 0.85);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0, 255, 150, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            transition: right 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 100;
+            overflow-y: auto;
+        }
+        #side-panel.open { right: 20px; }
+        .close-btn { cursor: pointer; color: #00ff96; float: right; font-weight: bold; }
+        
+        /* Estilo del Tooltip del Globo */
+        .scene-tooltip {
+            background: rgba(0, 10, 5, 0.9) !important;
+            border: 1px solid #00ff96 !important;
+            border-radius: 4px !important;
+            padding: 10px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        .tt-country { font-weight: bold; color: #00ff96; border-bottom: 1px solid #333; margin-bottom: 5px; }
+        .tt-commodity { font-size: 11px; color: #fff; display: block; }
+
+        /* Contenido del Panel */
+        h2 { font-size: 18px; margin-top: 0; color: #00ff96; border-bottom: 2px solid #004d40; }
+        .commodity-section { margin-bottom: 20px; }
+        .commodity-title { font-weight: bold; color: #fbff00; font-size: 14px; text-transform: uppercase; }
+        .entity-list { list-style: none; padding: 0; font-family: 'Inter', sans-serif; font-size: 13px; }
+        .entity-list li { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .entity-list li:before { content: "▹ "; color: #00ff96; }
+    </style>
+</head>
+<body>
+
+<div id="side-panel">
+    <span class="close-btn" onclick="togglePanel()">✕ CLOSE</span>
+    <div id="panel-content">
+        <p>Selecciona un país para ver los detalles.</p>
+    </div>
+</div>
+
+<div id="globeViz"></div>
+
+<script src="https://unpkg.com/three"></script>
+<script src="https://unpkg.com/globe.gl"></script>
+<script src="https://unpkg.com/topojson-client@3"></script>
+
+<script>
+    // 1. Data Estructurada (Agro-Commodities)
+    const agroData = {
+        "Brazil": {
+            commodities: [
+                { name: "Azúcar", entities: ["Raízen", "Copersucar", "BP Bunge Bioenergia", "Santander Agro"] },
+                { name: "Café", entities: ["Cooxupé", "Ipanema Coffees", "Louis Dreyfus Company"] },
+                { name: "Soja", entities: ["Amaggi", "Cargill Brazil", "Banco do Brasil"] }
+            ]
+        },
+        "Argentina": {
+            commodities: [
+                { name: "Soja", entities: ["Vicentin", "LDC Argentina", "Banco Nación", "Bunge"] },
+                { name: "Maíz", entities: ["Cargill", "ACA", "AFA"] },
+                { name: "Azúcar", entities: ["Ingenio Ledesma", "Ingenio Concepción", "Banco Macro"] }
+            ]
+        },
+        "Colombia": {
+            commodities: [
+                { name: "Café", entities: ["Federación Nal de Cafeteros", "Bancolombia", "Trilladora Andes"] },
+                { name: "Azúcar", entities: ["Ingenio Manuelita", "Ingenio del Cauca", "Riopaila Castilla"] }
+            ]
+        },
+        "Mexico": {
+            commodities: [
+                { name: "Azúcar", entities: ["Zucarmex", "Beta San Miguel", "FIRA"] },
+                { name: "Maíz", entities: ["Gruma", "Cargill Mexico"] }
+            ]
+        }
+    };
+
+    const latamNames = Object.keys(agroData);
+
+    // 2. Inicialización del Globo Minimalista
+    const globe = Globe()(document.getElementById("globeViz"))
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg') // Noche para estilo sci-fi/minimal
+        .backgroundColor('#000a05')
+        .showAtmosphere(true)
+        .atmosphereColor('#004d40')
+        .atmosphereAltitude(0.15)
+        
+        // Polígonos de Países
+        .polygonCapColor(d => latamNames.includes(d.properties.name) ? 'rgba(0, 255, 150, 0.15)' : 'rgba(0,0,0,0)')
+        .polygonSideColor(() => 'rgba(0, 100, 50, 0.2)')
+        .polygonStrokeColor(d => latamNames.includes(d.properties.name) ? '#00ff96' : 'rgba(255,255,255,0.05)')
+        .polygonStrokeWidth(d => latamNames.includes(d.properties.name) ? 0.8 : 0.1)
+        
+        // Tooltip Innovador
+        .onPolygonHover(hoverD => {
+            globe.polygonCapColor(d => d === hoverD && latamNames.includes(d.properties.name) 
+                ? 'rgba(0, 255, 150, 0.4)' 
+                : (latamNames.includes(d.properties.name) ? 'rgba(0, 255, 150, 0.15)' : 'rgba(0,0,0,0)'))
+        })
+        .polygonLabel(d => {
+            const country = d.properties.name;
+            const data = agroData[country];
+            if (!data) return null;
+            return `
+                <div class="scene-tooltip">
+                    <div class="tt-country">${country.toUpperCase()}</div>
+                    ${data.commodities.map(c => `<span class="tt-commodity">🌿 ${c.name}</span>`).join('')}
+                    <div style="font-size:9px; color:#aaa; margin-top:5px;">Clic para detalles</div>
+                </div>
+            `;
+        })
+        
+        // Acción al hacer Clic
+        .onPolygonClick(d => {
+            const country = d.properties.name;
+            const data = agroData[country];
+            if (data) {
+                showPanel(country, data);
+                // Enfocar cámara
+                globe.pointOfView({ lat: d.bbox[1], lng: d.bbox[0], altitude: 1.8 }, 1000);
+            }
+        });
+
+    // 3. Carga de Geometría
+    fetch('https://unpkg.com/world-atlas@2/countries-110m.json')
+        .then(res => res.json())
+        .then(data => {
+            const countries = topojson.feature(data, data.objects.countries).features;
+            globe.polygonsData(countries);
+        });
+
+    // 4. Funciones de Interfaz
+    function showPanel(name, data) {
+        const panel = document.getElementById('side-panel');
+        const content = document.getElementById('panel-content');
+        
+        let html = `<h2>${name}</h2>`;
+        data.commodities.forEach(c => {
+            html += `
+                <div class="commodity-section">
+                    <div class="commodity-title">${c.name}</div>
+                    <ul class="entity-list">
+                        ${c.entities.map(e => `<li>${e}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        });
+        
+        content.innerHTML = html;
+        panel.classList.add('open');
+    }
+
+    function togglePanel() {
+        document.getElementById('side-panel').classList.remove('open');
+    }
+
+    // Configuración de movimiento
+    globe.controls().autoRotate = true;
+    globe.controls().autoRotateSpeed = 0.3;
+    globe.controls().enableDamping = true;
+
+</script>
+</body>
+</html>
